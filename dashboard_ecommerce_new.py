@@ -1,0 +1,199 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.preprocessing import LabelEncoder
+from sklearn.metrics import mean_absolute_error, accuracy_score
+
+# Configuração da página
+st.set_page_config(page_title="E-Commerce Executive Analytics", layout="wide")
+
+# --- CARREGAMENTO E TRATAMENTO DE DADOS ---
+@st.cache_data
+def load_and_process_data():
+    df = pd.read_excel('E-Commerce Orders.csv.xlsx')
+    
+    # Tratamento de Datas e Ordenação Temporal
+    df['Date'] = pd.to_datetime(df['Date'])
+    df = df.sort_values('Date').reset_index(drop=True)
+    
+    df['Year'] = df['Date'].dt.year
+    df['Month'] = df['Date'].dt.month
+    df['Quarter'] = df['Date'].dt.to_period('Q').astype(str)
+    df['DayOfWeek'] = df['Date'].dt.day_name()
+    df['DayNum'] = df['Date'].dt.dayofweek 
+    
+    # Estatísticas por Cliente
+    customer_stats = df.groupby('CustomerID').agg(
+        CLV=('TotalPrice', 'sum'),
+        OrderCount=('OrderID', 'count'),
+        AvgTicket=('TotalPrice', 'mean')
+    ).reset_index()
+    
+    # Segmentação por Quartis
+    customer_stats['Segment'] = pd.qcut(customer_stats['CLV'], 4, labels=['Bronze', 'Silver', 'Gold', 'Platinum'])
+    customer_stats['Segment'] = pd.Categorical(customer_stats['Segment'], 
+                                              categories=['Platinum', 'Gold', 'Silver', 'Bronze'], 
+                                              ordered=True)
+    
+    df = df.merge(customer_stats[['CustomerID', 'CLV', 'OrderCount', 'Segment']], on='CustomerID', how='left')
+    return df, customer_stats
+
+try:
+    df, customer_stats = load_and_process_data()
+except Exception as e:
+    st.error(f"Erro ao carregar o arquivo: {e}")
+    st.stop()
+
+# --- INTERFACE ---
+st.title("🚀 Business Intelligence & Predictive Analytics")
+
+# --- ABAS RENOMEADAS ---
+tab_diag, tab_cust, tab_mkt_op, tab_prod_saz, tab_temp, tab_ml = st.tabs([
+    "🔍 Diagnóstico", "👥 Clientes", "📢 Mkt e Operações", "📦 Produtos e Sazonalidade", "📅 Séries Temporais", "🤖 Modelagem"
+])
+
+with tab_diag:
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Análise de Dados Ausentes (%)")
+        missing_data = df.isnull().mean() * 100
+        st.plotly_chart(px.bar(x=missing_data.index, y=missing_data.values, labels={'x':'Colunas','y':'% Missing'}), use_container_width=True)
+    with col2:
+        st.subheader("Matriz de Correlação")
+        num_cols = ['Quantity', 'UnitPrice', 'ItemsInCart', 'TotalPrice', 'CLV', 'OrderCount']
+        corr = df[num_cols].corr()
+        fig_corr = px.imshow(corr, text_auto=".2f", color_continuous_scale='RdBu', range_color=[-1, 1])
+        st.plotly_chart(fig_corr, use_container_width=True)
+
+with tab_cust:
+    col_c1, col_c2 = st.columns(2)
+    with col_c1:
+        st.subheader("Distribuição de Gastos (CLV)")
+        st.plotly_chart(px.histogram(customer_stats, x="CLV", nbins=50), use_container_width=True)
+    with col_c2:
+        st.subheader("Frequência de Compras")
+        st.plotly_chart(px.histogram(customer_stats, x="OrderCount"), use_container_width=True)
+    st.subheader("CLV por Segmento")
+    st.plotly_chart(px.box(customer_stats, x='Segment', y='CLV', color='Segment',
+                           category_orders={"Segment": ["Platinum", "Gold", "Silver", "Bronze"]}), use_container_width=True)
+
+with tab_mkt_op:
+    col_m1, col_m2 = st.columns(2)
+    with col_m1:
+        st.subheader("Participação por Cupom (+ Sem Cupom)")
+        coupon_df = df['CouponCode'].fillna('Sem Cupom').value_counts(normalize=True).reset_index()
+        coupon_df.columns = ['Cupom', 'Proporcao']
+        st.plotly_chart(px.pie(coupon_df, names='Cupom', values='Proporcao', hole=0.3), use_container_width=True)
+    with col_m2:
+        st.subheader("Taxa de Cancelamento por Canal (%)")
+        can_rate = df.groupby('ReferralSource')['OrderStatus'].apply(lambda x: (x == 'Cancelled').mean() * 100).reset_index()
+        can_rate.columns = ['ReferralSource', 'TaxaCancelamento']
+        can_rate = can_rate.sort_values('TaxaCancelamento', ascending=False)
+        st.plotly_chart(px.bar(can_rate, x='ReferralSource', y='TaxaCancelamento', color='TaxaCancelamento'), use_container_width=True)
+    
+    st.divider()
+    st.subheader("Status Geral dos Pedidos")
+    status_share = df['OrderStatus'].value_counts(normalize=True).reset_index()
+    status_share.columns = ['Status', 'Proporcao']
+    st.plotly_chart(px.pie(status_share, names='Status', values='Proporcao', title="Share de Status (Operações)"), use_container_width=True)
+
+with tab_prod_saz:
+    st.subheader("Análise de Mix de Produtos")
+    prod_stats = df.groupby('Product').agg({'TotalPrice': 'sum', 'OrderID': 'count'}).reset_index()
+    prod_stats['Receita Média'] = prod_stats['TotalPrice'] / prod_stats['OrderID']
+    p1, p2, p3 = st.columns(3)
+    p1.plotly_chart(px.pie(prod_stats, names='Product', values='TotalPrice', title="% Receita"), use_container_width=True)
+    p2.plotly_chart(px.pie(prod_stats, names='Product', values='OrderID', title="% Pedidos"), use_container_width=True)
+    p3.plotly_chart(px.bar(prod_stats.sort_values('Receita Média', ascending=False), x='Product', y='Receita Média', title="Receita Média"), use_container_width=True)
+    
+    st.divider()
+    
+    col_st1, col_st2 = st.columns(2)
+    with col_st1:
+        st.subheader("Sazonalidade Semanal (Índice)")
+        df['WeekIdx'] = df['Date'].dt.isocalendar().week
+        week_sales = df.groupby(['Year', 'WeekIdx', 'DayOfWeek', 'DayNum'])['TotalPrice'].sum().reset_index()
+        avg_week = week_sales.groupby(['Year', 'WeekIdx'])['TotalPrice'].transform('mean')
+        week_sales['Idx'] = week_sales['TotalPrice'] / avg_week
+        season_week = week_sales.groupby(['DayOfWeek', 'DayNum'])['Idx'].mean().reset_index().sort_values('DayNum')
+        st.plotly_chart(px.line(season_week, x='DayOfWeek', y='Idx', markers=True), use_container_width=True)
+
+    with col_st2:
+        st.subheader("Sazonalidade Mensal (Performance vs. Média do Ano)")
+        m_sales = df.groupby(['Year', 'Month'])['TotalPrice'].sum().reset_index()
+        y_avg = m_sales.groupby('Year')['TotalPrice'].transform('mean')
+        m_sales['Index_Month'] = m_sales['TotalPrice'] / y_avg
+        season_month = m_sales.groupby('Month')['Index_Month'].mean().reset_index()
+        fig_sm = px.line(season_month, x='Month', y='Index_Month', markers=True)
+        fig_sm.add_hline(y=1.0, line_dash="dash", line_color="red")
+        st.plotly_chart(fig_sm, use_container_width=True)
+
+with tab_temp:
+    st.subheader("Evolução Histórica do Faturamento")
+    
+    # Mensal
+    st.write("#### Faturamento Mensal (MM 6 meses)")
+    m_ts = df.set_index('Date').resample('ME')['TotalPrice'].sum().reset_index()
+    m_ts['MM6'] = m_ts['TotalPrice'].rolling(6).mean()
+    fig_m = go.Figure()
+    fig_m.add_trace(go.Scatter(x=m_ts['Date'], y=m_ts['TotalPrice'], name='Mensal'))
+    fig_m.add_trace(go.Scatter(x=m_ts['Date'], y=m_ts['MM6'], name='MM 6 Meses', line=dict(dash='dash')))
+    st.plotly_chart(fig_m, use_container_width=True)
+
+    # Quarter
+    st.write("#### Faturamento por Quarter (MM 4 períodos)")
+    q_ts = df.set_index('Date').resample('QE')['TotalPrice'].sum().reset_index()
+    q_ts['MM4'] = q_ts['TotalPrice'].rolling(4).mean()
+    fig_q = go.Figure()
+    fig_q.add_trace(go.Scatter(x=q_ts['Date'], y=q_ts['TotalPrice'], name='Trimestral', mode='lines+markers'))
+    fig_q.add_trace(go.Scatter(x=q_ts['Date'], y=q_ts['MM4'], name='MM 4 Quarters', line=dict(dash='dot', color='orange')))
+    st.plotly_chart(fig_q, use_container_width=True)
+
+    # Anual
+    st.write("#### Evolução Anual")
+    y_ts = df.groupby('Year')['TotalPrice'].sum().reset_index()
+    st.plotly_chart(px.bar(y_ts, x='Year', y='TotalPrice', text_auto='.2s', color='TotalPrice'), use_container_width=True)
+
+with tab_ml:
+    st.subheader("🤖 Modelagem de Drivers com Validação Temporal")
+    
+    df_ml = df.copy().dropna(subset=['ReferralSource', 'PaymentMethod', 'CouponCode'])
+    le = LabelEncoder()
+    df_ml['Ref_Enc'] = le.fit_transform(df_ml['ReferralSource'])
+    df_ml['Pay_Enc'] = le.fit_transform(df_ml['PaymentMethod'])
+    df_ml['Coup_Enc'] = le.fit_transform(df_ml['CouponCode'])
+    df_ml['IsCancelled'] = (df_ml['OrderStatus'] == 'Cancelled').astype(int)
+    
+    features = ['Quantity', 'UnitPrice', 'ItemsInCart', 'Ref_Enc', 'Pay_Enc', 'Coup_Enc']
+    X = df_ml[features]
+    
+    # Split Temporal (80/20)
+    split_idx = int(len(df_ml) * 0.8)
+    X_train, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
+    
+    # Modelo de Receita
+    y_rev = df_ml['TotalPrice']
+    reg = RandomForestRegressor(n_estimators=100, random_state=42).fit(X_train, y_rev.iloc[:split_idx])
+    mae = mean_absolute_error(y_rev.iloc[split_idx:], reg.predict(X_test))
+    
+    # Modelo de Cancelamento
+    y_can = df_ml['IsCancelled']
+    clf = RandomForestClassifier(n_estimators=100, random_state=42).fit(X_train, y_can.iloc[:split_idx])
+    acc = accuracy_score(y_can.iloc[split_idx:], clf.predict(X_test))
+    
+    m1, m2 = st.columns(2)
+    m1.metric("Erro Médio (MAE) - Receita", f"R$ {mae:.2f}")
+    m2.metric("Acurácia - Cancelamento", f"{acc:.2%}")
+    
+    col_g1, col_g2 = st.columns(2)
+    with col_g1:
+        st.write("### Importância: Receita")
+        imp_rev = pd.DataFrame({'Feature': features, 'Importancia': reg.feature_importances_}).sort_values('Importancia')
+        st.plotly_chart(px.bar(imp_rev, x='Importancia', y='Feature', orientation='h', color_discrete_sequence=['#00CC96']), use_container_width=True)
+    with col_g2:
+        st.write("### Importância: Cancelamento")
+        imp_can = pd.DataFrame({'Feature': features, 'Importancia': clf.feature_importances_}).sort_values('Importancia')
+        st.plotly_chart(px.bar(imp_can, x='Importancia', y='Feature', orientation='h', color_discrete_sequence=['#EF553B']), use_container_width=True)
