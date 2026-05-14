@@ -44,7 +44,7 @@ def load_and_process_data():
 try:
     df, customer_stats = load_and_process_data()
 except Exception as e:
-    st.error(f"Erro ao carregar o arquivo: {e}")
+    st.error(f"Error loading file: {e}")
     st.stop()
 
 # --- INTERFACE ---
@@ -52,17 +52,17 @@ st.title("🚀 Business Intelligence & Predictive Analytics")
 
 # --- ABAS RENOMEADAS ---
 tab_diag, tab_cust, tab_mkt_op, tab_prod_saz, tab_temp, tab_ml = st.tabs([
-    "🔍 Diagnóstico", "👥 Clientes", "📢 Mkt e Operações", "📦 Produtos e Sazonalidade", "📅 Séries Temporais", "🤖 Modelagem"
+    "🔍 Diagnosis", "👥 Customers", "📢 Marketing and Operations", "📦 Products and Seasonality", "📅 Time Series", "🤖 Modeling"
 ])
 
 with tab_diag:
     col1, col2 = st.columns(2)
     with col1:
-        st.subheader("Análise de Dados Ausentes (%)")
+        st.subheader("Missing Data Analysis (%)")
         missing_data = df.isnull().mean() * 100
-        st.plotly_chart(px.bar(x=missing_data.index, y=missing_data.values, labels={'x':'Colunas','y':'% Missing'}), use_container_width=True)
+        st.plotly_chart(px.bar(x=missing_data.index, y=missing_data.values, labels={'x':'Columns','y':'% Missing'}), use_container_width=True)
     with col2:
-        st.subheader("Matriz de Correlação")
+        st.subheader("Correlation Matrix")
         num_cols = ['Quantity', 'UnitPrice', 'ItemsInCart', 'TotalPrice', 'CLV', 'OrderCount']
         corr = df[num_cols].corr()
         fig_corr = px.imshow(corr, text_auto=".2f", color_continuous_scale='RdBu', range_color=[-1, 1])
@@ -71,49 +71,49 @@ with tab_diag:
 with tab_cust:
     col_c1, col_c2 = st.columns(2)
     with col_c1:
-        st.subheader("Distribuição de Gastos (CLV)")
+        st.subheader("Spending Distribution (CLV)")
         st.plotly_chart(px.histogram(customer_stats, x="CLV", nbins=50), use_container_width=True)
     with col_c2:
-        st.subheader("Frequência de Compras")
+        st.subheader("Purchase Frequency")
         st.plotly_chart(px.histogram(customer_stats, x="OrderCount"), use_container_width=True)
-    st.subheader("CLV por Segmento")
+    st.subheader("CLV by Segment")
     st.plotly_chart(px.box(customer_stats, x='Segment', y='CLV', color='Segment',
                            category_orders={"Segment": ["Platinum", "Gold", "Silver", "Bronze"]}), use_container_width=True)
 
 with tab_mkt_op:
     col_m1, col_m2 = st.columns(2)
     with col_m1:
-        st.subheader("Participação por Cupom (+ Sem Cupom)")
-        coupon_df = df['CouponCode'].fillna('Sem Cupom').value_counts(normalize=True).reset_index()
-        coupon_df.columns = ['Cupom', 'Proporcao']
-        st.plotly_chart(px.pie(coupon_df, names='Cupom', values='Proporcao', hole=0.3), use_container_width=True)
+        st.subheader("Coupon Participation (+ No Coupon)")
+        coupon_df = df['CouponCode'].fillna('No Coupon').value_counts(normalize=True).reset_index()
+        coupon_df.columns = ['Coupon', 'Proportion']
+        st.plotly_chart(px.pie(coupon_df, names='Coupon', values='Proportion', hole=0.3), use_container_width=True)
     with col_m2:
-        st.subheader("Taxa de Cancelamento por Canal (%)")
+        st.subheader("Cancellation Rate by Channel (%)")
         can_rate = df.groupby('ReferralSource')['OrderStatus'].apply(lambda x: (x == 'Cancelled').mean() * 100).reset_index()
-        can_rate.columns = ['ReferralSource', 'TaxaCancelamento']
-        can_rate = can_rate.sort_values('TaxaCancelamento', ascending=False)
-        st.plotly_chart(px.bar(can_rate, x='ReferralSource', y='TaxaCancelamento', color='TaxaCancelamento'), use_container_width=True)
+        can_rate.columns = ['ReferralSource', 'CancellationRate']
+        can_rate = can_rate.sort_values('CancellationRate', ascending=False)
+        st.plotly_chart(px.bar(can_rate, x='ReferralSource', y='CancellationRate', color='CancellationRate'), use_container_width=True)
     
     st.divider()
-    st.subheader("Status Geral dos Pedidos")
+    st.subheader("General Order Status")
     status_share = df['OrderStatus'].value_counts(normalize=True).reset_index()
-    status_share.columns = ['Status', 'Proporcao']
-    st.plotly_chart(px.pie(status_share, names='Status', values='Proporcao', title="Share de Status (Operações)"), use_container_width=True)
+    status_share.columns = ['Status', 'Proportion']
+    st.plotly_chart(px.pie(status_share, names='Status', values='Proportion', title="Status Share (Operations)"), use_container_width=True)
 
 with tab_prod_saz:
-    st.subheader("Análise de Mix de Produtos")
+    st.subheader("Product Mix Analysis")
     prod_stats = df.groupby('Product').agg({'TotalPrice': 'sum', 'OrderID': 'count'}).reset_index()
-    prod_stats['Receita Média'] = prod_stats['TotalPrice'] / prod_stats['OrderID']
+    prod_stats['Average Revenue'] = prod_stats['TotalPrice'] / prod_stats['OrderID']
     p1, p2, p3 = st.columns(3)
-    p1.plotly_chart(px.pie(prod_stats, names='Product', values='TotalPrice', title="% Receita"), use_container_width=True)
-    p2.plotly_chart(px.pie(prod_stats, names='Product', values='OrderID', title="% Pedidos"), use_container_width=True)
-    p3.plotly_chart(px.bar(prod_stats.sort_values('Receita Média', ascending=False), x='Product', y='Receita Média', title="Receita Média"), use_container_width=True)
+    p1.plotly_chart(px.pie(prod_stats, names='Product', values='TotalPrice', title="% Revenue"), use_container_width=True)
+    p2.plotly_chart(px.pie(prod_stats, names='Product', values='OrderID', title="% Orders"), use_container_width=True)
+    p3.plotly_chart(px.bar(prod_stats.sort_values('Average Revenue', ascending=False), x='Product', y='Average Revenue', title="Average Revenue"), use_container_width=True)
     
     st.divider()
     
     col_st1, col_st2 = st.columns(2)
     with col_st1:
-        st.subheader("Sazonalidade Semanal (Índice)")
+        st.subheader("Weekly Seasonality (Index)")
         df['WeekIdx'] = df['Date'].dt.isocalendar().week
         week_sales = df.groupby(['Year', 'WeekIdx', 'DayOfWeek', 'DayNum'])['TotalPrice'].sum().reset_index()
         avg_week = week_sales.groupby(['Year', 'WeekIdx'])['TotalPrice'].transform('mean')
@@ -122,7 +122,7 @@ with tab_prod_saz:
         st.plotly_chart(px.line(season_week, x='DayOfWeek', y='Idx', markers=True), use_container_width=True)
 
     with col_st2:
-        st.subheader("Sazonalidade Mensal (Performance vs. Média do Ano)")
+        st.subheader("Monthly Seasonality (Performance vs. Annual Average)")
         m_sales = df.groupby(['Year', 'Month'])['TotalPrice'].sum().reset_index()
         y_avg = m_sales.groupby('Year')['TotalPrice'].transform('mean')
         m_sales['Index_Month'] = m_sales['TotalPrice'] / y_avg
@@ -132,33 +132,33 @@ with tab_prod_saz:
         st.plotly_chart(fig_sm, use_container_width=True)
 
 with tab_temp:
-    st.subheader("Evolução Histórica do Faturamento")
+    st.subheader("Historical Revenue Evolution")
     
     # Mensal
-    st.write("#### Faturamento Mensal (MM 6 meses)")
+    st.write("#### Monthly Revenue (6-month MA)")
     m_ts = df.set_index('Date').resample('ME')['TotalPrice'].sum().reset_index()
     m_ts['MM6'] = m_ts['TotalPrice'].rolling(6).mean()
     fig_m = go.Figure()
-    fig_m.add_trace(go.Scatter(x=m_ts['Date'], y=m_ts['TotalPrice'], name='Mensal'))
-    fig_m.add_trace(go.Scatter(x=m_ts['Date'], y=m_ts['MM6'], name='MM 6 Meses', line=dict(dash='dash')))
+    fig_m.add_trace(go.Scatter(x=m_ts['Date'], y=m_ts['TotalPrice'], name='Monthly'))
+    fig_m.add_trace(go.Scatter(x=m_ts['Date'], y=m_ts['MM6'], name='6-Month MA', line=dict(dash='dash')))
     st.plotly_chart(fig_m, use_container_width=True)
 
     # Quarter
-    st.write("#### Faturamento por Quarter (MM 4 períodos)")
+    st.write("#### Quarterly Revenue (4-period MA)")
     q_ts = df.set_index('Date').resample('QE')['TotalPrice'].sum().reset_index()
     q_ts['MM4'] = q_ts['TotalPrice'].rolling(4).mean()
     fig_q = go.Figure()
-    fig_q.add_trace(go.Scatter(x=q_ts['Date'], y=q_ts['TotalPrice'], name='Trimestral', mode='lines+markers'))
-    fig_q.add_trace(go.Scatter(x=q_ts['Date'], y=q_ts['MM4'], name='MM 4 Quarters', line=dict(dash='dot', color='orange')))
+    fig_q.add_trace(go.Scatter(x=q_ts['Date'], y=q_ts['TotalPrice'], name='Quarterly', mode='lines+markers'))
+    fig_q.add_trace(go.Scatter(x=q_ts['Date'], y=q_ts['MM4'], name='4-Quarter MA', line=dict(dash='dot', color='orange')))
     st.plotly_chart(fig_q, use_container_width=True)
 
     # Anual
-    st.write("#### Evolução Anual")
+    st.write("#### Annual Evolution")
     y_ts = df.groupby('Year')['TotalPrice'].sum().reset_index()
     st.plotly_chart(px.bar(y_ts, x='Year', y='TotalPrice', text_auto='.2s', color='TotalPrice'), use_container_width=True)
 
 with tab_ml:
-    st.subheader("🤖 Modelagem de Drivers com Validação Temporal")
+    st.subheader("🤖 Driver Modeling with Temporal Validation")
     
     df_ml = df.copy().dropna(subset=['ReferralSource', 'PaymentMethod', 'CouponCode'])
     le = LabelEncoder()
@@ -174,7 +174,7 @@ with tab_ml:
     split_idx = int(len(df_ml) * 0.8)
     X_train, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
     
-    # Modelo de Receita
+    # Modelo de Revenue
     y_rev = df_ml['TotalPrice']
     reg = RandomForestRegressor(n_estimators=100, random_state=42).fit(X_train, y_rev.iloc[:split_idx])
     mae = mean_absolute_error(y_rev.iloc[split_idx:], reg.predict(X_test))
@@ -185,15 +185,15 @@ with tab_ml:
     acc = accuracy_score(y_can.iloc[split_idx:], clf.predict(X_test))
     
     m1, m2 = st.columns(2)
-    m1.metric("Erro Médio (MAE) - Receita", f"R$ {mae:.2f}")
-    m2.metric("Acurácia - Cancelamento", f"{acc:.2%}")
+    m1.metric("Mean Error (MAE) - Revenue", f"R$ {mae:.2f}")
+    m2.metric("Accuracy - Cancellation", f"{acc:.2%}")
     
     col_g1, col_g2 = st.columns(2)
     with col_g1:
-        st.write("### Importância: Receita")
+        st.write("### Importance: Revenue")
         imp_rev = pd.DataFrame({'Feature': features, 'Importancia': reg.feature_importances_}).sort_values('Importancia')
         st.plotly_chart(px.bar(imp_rev, x='Importancia', y='Feature', orientation='h', color_discrete_sequence=['#00CC96']), use_container_width=True)
     with col_g2:
-        st.write("### Importância: Cancelamento")
+        st.write("### Importance: Cancellation")
         imp_can = pd.DataFrame({'Feature': features, 'Importancia': clf.feature_importances_}).sort_values('Importancia')
         st.plotly_chart(px.bar(imp_can, x='Importancia', y='Feature', orientation='h', color_discrete_sequence=['#EF553B']), use_container_width=True)
